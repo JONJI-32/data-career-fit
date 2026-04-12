@@ -1,64 +1,153 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import { FileSearch, UserRoundSearch, BriefcaseBusiness } from "lucide-react";
+import PdfUpload from "@/components/PdfUpload";
+import ProfileEditor from "@/components/ProfileEditor";
+import JobList from "@/components/JobList";
+import type { MatchResult } from "@/lib/types";
+
+interface Profile {
+  skills: string[];
+  job_categories: string[];
+  domain_keywords: string[];
+  project_highlights: string[];
+  summary: string;
+}
+
+type Step = "upload" | "edit" | "results";
+
+const STEPS: { key: Step; label: string; icon: React.ReactNode }[] = [
+  {
+    key: "upload",
+    label: "업로드",
+    icon: <FileSearch className="w-4 h-4" />,
+  },
+  {
+    key: "edit",
+    label: "프로필 확인",
+    icon: <UserRoundSearch className="w-4 h-4" />,
+  },
+  {
+    key: "results",
+    label: "매칭 결과",
+    icon: <BriefcaseBusiness className="w-4 h-4" />,
+  },
+];
 
 export default function Home() {
+  const [step, setStep] = useState<Step>("upload");
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [results, setResults] = useState<MatchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const handleAnalyzed = (p: Profile) => {
+    setProfile(p);
+    setStep("edit");
+  };
+
+  const handleSearch = async (p: Profile) => {
+    setSearching(true);
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: p }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "매칭에 실패했습니다.");
+      }
+      const data = await res.json();
+      setResults(data.results);
+      setStep("results");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const stepIndex = STEPS.findIndex((s) => s.key === step);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-foreground">
+              Data Career Fit
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              포트폴리오 기반 맞춤 채용 추천
+            </p>
+          </div>
+
+          {/* Step Indicator */}
+          <div className="hidden sm:flex items-center gap-1">
+            {STEPS.map((s, i) => (
+              <div key={s.key} className="flex items-center">
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    i === stepIndex
+                      ? "bg-primary text-primary-foreground"
+                      : i < stepIndex
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {s.icon}
+                  {s.label}
+                </div>
+                {i < STEPS.length - 1 && (
+                  <div
+                    className={`w-8 h-px mx-1 ${
+                      i < stepIndex ? "bg-primary/40" : "bg-muted"
+                    }`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-5xl mx-auto px-6 py-12">
+        {step === "upload" && (
+          <div className="space-y-8">
+            <div className="text-center space-y-3">
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">
+                나에게 맞는 채용 공고를 찾아보세요
+              </h2>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                포트폴리오 PDF를 업로드하면 AI가 스킬을 분석하고 적합한 채용
+                공고를 추천합니다.
+              </p>
+            </div>
+            <PdfUpload onAnalyzed={handleAnalyzed} />
+          </div>
+        )}
+
+        {step === "edit" && profile && (
+          <ProfileEditor
+            profile={profile}
+            onSearch={handleSearch}
+            onBack={() => {
+              setProfile(null);
+              setStep("upload");
+            }}
+            loading={searching}
+          />
+        )}
+
+        {step === "results" && (
+          <JobList
+            results={results}
+            onBack={() => setStep("edit")}
+          />
+        )}
       </main>
     </div>
   );
