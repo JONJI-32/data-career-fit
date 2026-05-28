@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGeminiClient, GEMINI_MODEL } from "@/lib/gemini";
 import { profileSchema, geminiProfileSchema } from "@/lib/schemas/profile";
+import { extractText } from "unpdf";
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
 const MAX_RETRIES = 3;
@@ -43,7 +44,16 @@ export async function POST(request: NextRequest) {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const { text: pdfText } = await extractText(new Uint8Array(arrayBuffer), {
+      mergePages: true,
+    });
+
+    if (!pdfText?.trim()) {
+      return NextResponse.json(
+        { error: "PDF에서 텍스트를 추출할 수 없습니다." },
+        { status: 422 }
+      );
+    }
 
     const ai = getGeminiClient();
     const geminiRequest = {
@@ -58,13 +68,7 @@ export async function POST(request: NextRequest) {
           role: "user" as const,
           parts: [
             {
-              inlineData: {
-                mimeType: "application/pdf",
-                data: base64,
-              },
-            },
-            {
-              text: "이 이력서/포트폴리오를 분석하여 구직 프로필을 추출해주세요.",
+              text: `이 이력서/포트폴리오를 분석하여 구직 프로필을 추출해주세요.\n\n---\n${pdfText.trim()}`,
             },
           ],
         },

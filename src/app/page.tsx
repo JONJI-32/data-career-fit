@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileSearch, UserRoundSearch, BriefcaseBusiness } from "lucide-react";
 import PdfUpload from "@/components/PdfUpload";
 import ProfileEditor from "@/components/ProfileEditor";
 import JobList from "@/components/JobList";
+import SearchHistory from "@/components/SearchHistory";
 import type { MatchResult } from "@/lib/types";
 
 interface Profile {
@@ -35,13 +36,28 @@ const STEPS: { key: Step; label: string; icon: React.ReactNode }[] = [
   },
 ];
 
+const STORAGE_KEY = "dcf_session_tokens";
+const MAX_HISTORY = 20;
+
 export default function Home() {
   const [step, setStep] = useState<Step>("upload");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [results, setResults] = useState<MatchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [historyTokens, setHistoryTokens] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setHistoryTokens(JSON.parse(raw));
+    } catch {
+      // localStorage 파싱 실패 시 무시
+    }
+  }, []);
 
   const handleAnalyzed = (p: Profile) => {
+    setSessionToken(crypto.randomUUID());
     setProfile(p);
     setStep("edit");
   };
@@ -52,7 +68,7 @@ export default function Home() {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile: p }),
+        body: JSON.stringify({ profile: p, sessionToken }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -61,11 +77,26 @@ export default function Home() {
       const data = await res.json();
       setResults(data.results);
       setStep("results");
+
+      if (sessionToken) {
+        const updated = [sessionToken, ...historyTokens.filter((t) => t !== sessionToken)].slice(
+          0,
+          MAX_HISTORY
+        );
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        setHistoryTokens(updated);
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setSearching(false);
     }
+  };
+
+  const handleRestore = (restoredProfile: Profile, restoredResults: MatchResult[]) => {
+    setProfile(restoredProfile);
+    setResults(restoredResults);
+    setStep("results");
   };
 
   const stepIndex = STEPS.findIndex((s) => s.key === step);
@@ -127,6 +158,9 @@ export default function Home() {
               </p>
             </div>
             <PdfUpload onAnalyzed={handleAnalyzed} />
+            {historyTokens.length > 0 && (
+              <SearchHistory tokens={historyTokens} onRestore={handleRestore} />
+            )}
           </div>
         )}
 

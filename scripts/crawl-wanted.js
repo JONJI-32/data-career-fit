@@ -237,21 +237,36 @@ async function main() {
   fs.writeFileSync(backupPath, JSON.stringify(allJobs, null, 2), 'utf-8');
   console.log(`\nJSON 백업 저장: ${backupPath}`);
 
-  // 5. 기존 데이터 삭제 후 새로 삽입 (편향 없는 최신 데이터로 교체)
-  console.log('\nSupabase 데이터 교체 중...');
-  const { error: deleteError } = await supabase
-    .from('job_postings')
-    .delete()
-    .eq('source_site', 'wanted');
-  if (deleteError) {
-    console.error('기존 데이터 삭제 오류:', deleteError.message);
+  // 5. 기존 source_url 목록 조회 → 중복 필터링 후 신규만 삽입
+  console.log('\n기존 공고 URL 조회 중...');
+  const existingUrls = new Set();
+  let urlPage = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('job_postings')
+      .select('source_url')
+      .eq('source_site', 'wanted')
+      .range(urlPage * 1000, (urlPage + 1) * 1000 - 1);
+    if (error) { console.error('URL 조회 오류:', error.message); break; }
+    if (!data || data.length === 0) break;
+    data.forEach(row => { if (row.source_url) existingUrls.add(row.source_url); });
+    if (data.length < 1000) break;
+    urlPage++;
+  }
+  console.log(`기존 공고 ${existingUrls.size}건`);
+
+  const newJobs = allJobs.filter(j => !existingUrls.has(j.source_url));
+  console.log(`신규 공고 ${newJobs.length}건 (중복 ${allJobs.length - newJobs.length}건 제외)`);
+
+  if (newJobs.length === 0) {
+    console.log('\n추가할 신규 공고가 없습니다.');
+    return;
   }
 
   let insertCount = 0;
   let errorCount = 0;
-  // 10개씩 배치 삽입
-  for (let i = 0; i < allJobs.length; i += 10) {
-    const batch = allJobs.slice(i, i + 10);
+  for (let i = 0; i < newJobs.length; i += 10) {
+    const batch = newJobs.slice(i, i + 10);
     const { error } = await supabase.from('job_postings').insert(batch);
     if (error) {
       console.error(`  Batch insert error (${i}~${i + batch.length}):`, error.message);
@@ -262,7 +277,7 @@ async function main() {
   }
 
   console.log(`\n=== 완료 ===`);
-  console.log(`삽입: ${insertCount}건 / 오류: ${errorCount}건 / 총: ${allJobs.length}건`);
+  console.log(`신규 삽입: ${insertCount}건 / 오류: ${errorCount}건 / DB 총계: ${existingUrls.size + insertCount}건`);
 }
 
 main().catch(console.error);

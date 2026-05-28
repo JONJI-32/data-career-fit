@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
         .from("search_sessions")
         .insert({
           session_token: token,
+          profile,
           extracted_keywords: [
             ...profile.skills,
             ...profile.domain_keywords,
